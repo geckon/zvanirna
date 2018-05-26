@@ -1,8 +1,8 @@
-from django.conf.urls import include, url
+from django.urls import path
 
 from . import views
 
 urlpatterns = [
-    url(r'^search/', include('haystack.urls')),
-    url('', views.index, name='index'),
+    #path(r'^search/', include('haystack.urls')),
+    path('', views.index, name='index'),
 ]
