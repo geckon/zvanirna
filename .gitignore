@@ -5,3 +5,4 @@ venv
 zvanirna/whoosh_index
 .ackrc
 .vscode
+logs/*.log

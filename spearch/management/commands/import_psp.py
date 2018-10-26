@@ -1,4 +1,5 @@
 import os
+import logging
 import re
 import sys
 import tempfile
@@ -10,6 +11,8 @@ from bs4 import BeautifulSoup, Comment
 from django.core.management.base import BaseCommand
 
 from spearch.models import Institution, Speaker, Speech
+
+logger = logging.getLogger(__name__)
 
 # probably won't be used
 def import_term_zip(url):
@@ -23,14 +26,14 @@ def import_term_zip(url):
 
 # probably won't be used
 def import_zip(name, url):
-    print('Trying {}'.format(url))
+    logger.info('Trying %s', url)
     response = requests.get(url)
     if response.status_code == 200:
         with tempfile.TemporaryDirectory() as tmp_dir:
             zip_path = os.path.join(tmp_dir, name)
             with open(zip_path, 'wb') as f:
                 f.write(response.content)
-            print('Downloaded {}.'.format(zip_path))
+            logger.info('Downloaded %s.', zip_path)
             zip_file = ZipFile(zip_path)
             zip_file.extractall(tmp_dir)
             os.chdir(tmp_dir)
@@ -38,16 +41,17 @@ def import_zip(name, url):
                 soup = BeautifulSoup(index, 'html.parser')
                 #TODO parse links and import
     else:
-        print('Request to {} failed with {}.'.format(response.url,
-                                                     response.status_code))
+        logger.warn('Request to %s failed with %d.',
+                    response.url, response.status_code)
+
 def import_term(url):
-    print('importing term {}'.format(url))
+    logger.info('importing term %s', url)
     resp = requests.get(url)
     soup = BeautifulSoup(resp.text, 'html.parser')
     content = soup.find('div', {'id': 'main-content'})
     day_links = content.find_all('a', href=re.compile(r'\d+schuz/\d+-\d+.html'))
     for dl in day_links:
-        print('processing {}'.format(dl['href']))
+        logger.info('processing %s', dl['href'])
         import_day(urllib.parse.urljoin(url, dl['href']))
 
 def import_day(url):
@@ -64,7 +68,7 @@ def import_day(url):
     # This probably doesn't happen too often but still it should be
     # addressed at some point.
 
-    print('importing day {}'.format(url))
+    logger.info('importing day %s', url)
     resp = requests.get(url)
     soup = BeautifulSoup(resp.text, 'html.parser')
     content = soup.find('div', {'id': 'main-content'})
@@ -80,7 +84,7 @@ def import_day(url):
         for ch in sec_cont.children:
             all_speeches += str(ch)
     all_soup = BeautifulSoup(all_speeches, 'html.parser')
-    #print(all_soup.prettify())
+    logger.debug(all_soup.prettify())
     current_speech = ''
     current_author = None
     try:
@@ -97,9 +101,8 @@ def import_day(url):
             if ch.name == 'p':
                 a = ch.find('a', id=re.compile(r'^r\d+'))
                 if a:
-                    # new speech
-                    #print('{} said:\n{}\n-----\n'.format(current_author,
-                    #                                     current_speech[:200]))
+                    logger.debug('New speech - %s said:%r',
+                                 current_author, current_speech[:200])
 
                     # insert to the DB
                     import_speech(psp, current_author, current_speech)
@@ -115,12 +118,11 @@ def import_day(url):
                 current_speech += '\n' + ch.text
         else:
             # this is probably an unwanted tag
-            print(ch)
-            print(ch.name)
+            logger.error("An unwanted tag: %s - %s", ch, ch.name)
             sys.exit(1)
     # last speech
-    #print('{} said:\n{}\n-----\n'.format(current_author,
-    #                                     current_speech[:200]))
+    logger.debug('New speech - %s said:%r',
+                 current_author, current_speech[:200])
 
     # insert to the DB
     import_speech(psp, current_author, current_speech)
@@ -130,7 +132,7 @@ def import_speech(institution, author, speech):
     """Insert the given speech to the DB."""
 
     if not author:
-        print('Speech "{}" does not have a valid author.'.format(speech))
+        logger.warn('Speech %r does not have a valid author.', speech)
         return
 
     #TODO: Remove/extract titles
@@ -142,7 +144,7 @@ def import_speech(institution, author, speech):
 
     s = Speech(institution=institution, speaker=sp, speaker_title='', #date=...
                speech=speech)
-    #print('IMPORTING {}'.format(s))
+    logger.debug('Importing %r', s)
     s.save()
 
 def is_empty_string(string):
@@ -152,31 +154,31 @@ def is_empty_string(string):
 def filter_records(soup):
     # remove comments
     for c in soup.find_all(string=lambda text:isinstance(text, Comment)):
-        #print('REMOVING: {}'.format(c))
+        logger.debug('Removing: %s', c)
         c.extract()
 
     # remove whitespace-only strings
     for t in soup.find_all(string=re.compile('^\s*$')):
-        #print('REMOVING: {}'.format(t))
+        logger.debug('Removing: %s', t)
         t.extract()
 
     # TODO remove empty strings
 
     # ignore navigation
     for div in soup.find_all('div', {'class': 'document-nav'}):
-        #print('REMOVING: {}'.format(div))
+        logger.debug('Removing: %s', div)
         div.decompose()
 
     # remove info about session pauses - the regex might need some tweaking
     for p in soup.find_all('p', string=re.compile(r'^\s*\(Jednání (přerušeno|skončilo|pokračovalo|zahájeno) (v|ve|od) \d\d?[.:]\d\d( do \d\d?[.:]\d\d)? hodin.\) ?(\*\*\*)?\s*$')):
-        #print('REMOVING: {}'.format(p))
+        logger.debug('Removing: %s', p)
         p.decompose()
 
     # TODO? maybe remove strings like (pokračuje <name>) or (<time> hodin)
 
     # remove empty links
     for a in soup.find_all('a', string=is_empty_string):
-        #print('REMOVING: {}'.format(a))
+        logger.debug('Removing: %s', a)
         a.decompose()
 
     # remove _d links
