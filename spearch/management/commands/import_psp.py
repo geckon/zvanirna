@@ -110,9 +110,9 @@ def import_day(url):
                     try:
                         author_link = urllib.parse.urljoin('https://www.psp.cz',
                                                            a['href'])
-                    except KeyError as err:
-                        logger.error("%s while processing %s.", err, a)
-                        author_link = ''
+                    except KeyError:
+                        logger.warn("An author without a link: %s", a)
+                        author_link = None
                     current_author = (a.text, author_link)
                     current_speech = ch.text
                     continue
