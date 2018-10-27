@@ -3,7 +3,7 @@ import logging
 import re
 import sys
 import tempfile
-import urllib
+from urllib.parse import urljoin
 from zipfile import ZipFile
 
 import requests
@@ -14,6 +14,10 @@ from spearch.models import Institution, Speaker, Speech
 
 logger = logging.getLogger(__name__)
 
+PSP_NAME = 'Poslanecká sněmovna'
+PSP_URL = 'https://www.psp.cz'
+
+
 # probably won't be used
 def import_term_zip(url):
     resp = requests.get(url)
@@ -21,7 +25,7 @@ def import_term_zip(url):
     zips = [a['href'] for a in soup.find_all('a') if a['href'].endswith('.zip')]
     base_url = url.rsplit('/', 1)[0]
     for zip_name in zips:
-        zip_url = urllib.parse.urljoin(base_url, 'zip/' + zip_name)
+        zip_url = urljoin(base_url, 'zip/' + zip_name)
         import_zip(zip_name, zip_url)
 
 # probably won't be used
@@ -52,7 +56,7 @@ def import_term(url):
     day_links = content.find_all('a', href=re.compile(r'\d+schuz/\d+-\d+.html'))
     for dl in day_links:
         logger.info('processing %s', dl['href'])
-        import_day(urllib.parse.urljoin(url, dl['href']))
+        import_day(urljoin(url, dl['href']))
 
 def import_day(url):
 
@@ -76,7 +80,7 @@ def import_day(url):
     sections = [link['href'].split('#')[0] for link in speech_links]
     all_speeches = ''
     for sec in sections:
-        sec_page = requests.get(urllib.parse.urljoin(url, sec))
+        sec_page = requests.get(urljoin(url, sec))
         sec_soup = BeautifulSoup(sec_page.text, 'html.parser')
         sec_cont = sec_soup.find('div', {'id': 'main-content'})
         filter_records(sec_cont)
@@ -87,11 +91,9 @@ def import_day(url):
     logger.debug(all_soup.prettify())
     current_speech = ''
     current_author = None
-    try:
-        psp = Institution.objects.get(name='Poslanecká sněmovna')
-    except:
-        psp = Institution(name='Poslanecká sněmovna')
-        psp.save()
+
+    psp = Institution.objects.get(name=PSP_NAME)
+
     for ch in all_soup.children:
         if (ch.name == 'p' or
             ch.name is None or
@@ -108,8 +110,7 @@ def import_day(url):
                     import_speech(psp, current_author, current_speech)
                     # TODO add date and link to the speech (psp.cz) somehow
                     try:
-                        author_link = urllib.parse.urljoin('https://www.psp.cz',
-                                                           a['href'])
+                        author_link = urljoin(PSP_URL, a['href'])
                     except KeyError:
                         logger.warn("An author without a link: %s", a)
                         author_link = None
@@ -196,10 +197,22 @@ class Command(BaseCommand):
         if options['verbosity'] > 1:
             logger.setLevel(logging.DEBUG)
 
+        # create Institurion for PSP if needed
+        try:
+            psp = Institution.objects.get(name=PSP_NAME)
+            logger.debug('PSP institution already exists in the DB')
+        except:
+            logger.debug('Creating PSP institution in the DB')
+            psp = Institution(name=PSP_NAME)
+            psp.save()
 
-        # TODO drop DB
+        # drop current records from the DB
+        current_speeches = Speech.objects.filter(institution=psp)
+        logger.info('Removing %d existing speech records.',
+                    current_speeches.count())
+        current_speeches.delete()
 
-        #import_term_zip('https://www.psp.cz/eknih/2017ps/stenprot/zip/index.htm')
-        import_term('https://www.psp.cz/eknih/2017ps/stenprot/index.htm')
+        #import_term_zip(urljoin(PSP_URL,'eknih/2017ps/stenprot/zip/index.htm'))
+        import_term(urljoin(PSP_URL, 'eknih/2017ps/stenprot/index.htm'))
 
 
