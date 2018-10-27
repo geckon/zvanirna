@@ -1,0 +1,9 @@
+# .gitignore to keep logs directory empty in the repo
+#####################################################
+
+# Ignore all files in this dir...
+*
+
+# ... except for this one.
+!.gitignore
+
