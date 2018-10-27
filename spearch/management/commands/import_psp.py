@@ -107,9 +107,13 @@ def import_day(url):
                     # insert to the DB
                     import_speech(psp, current_author, current_speech)
                     # TODO add date and link to the speech (psp.cz) somehow
-                    current_author = (
-                        a.text,
-                        urllib.parse.urljoin('https://www.psp.cz', a['href']))
+                    try:
+                        author_link = urllib.parse.urljoin('https://www.psp.cz',
+                                                           a['href'])
+                    except KeyError as err:
+                        logger.error("%s while processing %s.", err, a)
+                        author_link = ''
+                    current_author = (a.text, author_link)
                     current_speech = ch.text
                     continue
             if ch.name is None:
@@ -154,31 +158,31 @@ def is_empty_string(string):
 def filter_records(soup):
     # remove comments
     for c in soup.find_all(string=lambda text:isinstance(text, Comment)):
-        logger.debug('Removing: %s', c)
+        logger.debug('Removing comment: %s', c)
         c.extract()
 
     # remove whitespace-only strings
     for t in soup.find_all(string=re.compile('^\s*$')):
-        logger.debug('Removing: %s', t)
+        logger.debug('Removing whitespace: %s', t)
         t.extract()
 
     # TODO remove empty strings
 
     # ignore navigation
     for div in soup.find_all('div', {'class': 'document-nav'}):
-        logger.debug('Removing: %s', div)
+        logger.debug('Removing document-nav div: %s', div)
         div.decompose()
 
     # remove info about session pauses - the regex might need some tweaking
     for p in soup.find_all('p', string=re.compile(r'^\s*\(Jednání (přerušeno|skončilo|pokračovalo|zahájeno) (v|ve|od) \d\d?[.:]\d\d( do \d\d?[.:]\d\d)? hodin.\) ?(\*\*\*)?\s*$')):
-        logger.debug('Removing: %s', p)
+        logger.debug('Removing session pause: %s', p)
         p.decompose()
 
     # TODO? maybe remove strings like (pokračuje <name>) or (<time> hodin)
 
     # remove empty links
     for a in soup.find_all('a', string=is_empty_string):
-        logger.debug('Removing: %s', a)
+        logger.debug('Removing empty link: %s', a)
         a.decompose()
 
     # remove _d links
@@ -188,7 +192,11 @@ def filter_records(soup):
 class Command(BaseCommand):
     help='Import speech data from PSP.'
 
-    def handle(self, *args, **kwargs):
+    def handle(self, *args, **options):
+        if options['verbosity'] > 1:
+            logger.setLevel(logging.DEBUG)
+
+
         # TODO drop DB
 
         #import_term_zip('https://www.psp.cz/eknih/2017ps/stenprot/zip/index.htm')
