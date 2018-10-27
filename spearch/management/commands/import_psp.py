@@ -137,7 +137,8 @@ def import_speech(institution, author, speech):
     """Insert the given speech to the DB."""
 
     if not author:
-        logger.warn('Speech %r does not have a valid author.', speech)
+        logger.warn('Speech %r does not have a valid author. '
+                    'Not importing.', speech)
         return
 
     #TODO: Remove/extract titles
